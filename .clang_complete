@@ -1,0 +1,5 @@
+ -I.
+ -Ichan
+ -Iklib
+ -I/usr/include
+ -I/usr/X11/include

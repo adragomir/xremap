@@ -1,0 +1,2 @@
+#!/bin/bash
+gcc -g -std=gnu11 -o k -I. -Ichan -Iklib -lpthread -lX11 -lXau -lXtst main4.c klib/kstring.c chan/chan.c chan/queue.c
