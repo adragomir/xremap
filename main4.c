@@ -63,7 +63,7 @@ static App *app = NULL;
 
 void *sig_handler (void *user_data);
 
-void intercept (XPointer user_data, XRecordInterceptData *data);
+void intercept(XPointer user_data, XRecordInterceptData *data);
 void grab_all_keys(App *app);
 
 void print_usage (const char *program_name);
@@ -113,7 +113,7 @@ void hotkey_to_grab_key(Hotkey h, int *keycode, unsigned int *modifiers) {
 }
 
 void dump_hotkey(Hotkey h) {
-    printf("Hotkey: %d|%d|%d|%d - %d / %d\n", h.shift, h.control, h.alt, h.super, h.key, h.button);
+    fprintf(stderr, "Hotkey: %d|%d|%d|%d - %d / %d\n", h.shift, h.control, h.alt, h.super, h.key, h.button);
 }
 
 int handle_token(Display *d, char *token, Hotkey *h) {
@@ -134,12 +134,12 @@ int handle_token(Display *d, char *token, Hotkey *h) {
     } else {
         KeySym ks = NoSymbol;
         if ((ks = XStringToKeysym(token)) == NoSymbol) {
-            printf("Invalid key: %s\n", token);
+            fprintf(stderr, "Invalid key: %s\n", token);
             return 1;
         }
         KeyCode code = XKeysymToKeycode(d, ks);
         if (code == 0) {
-            printf("WARNING: No keycode found for keysym "
+            fprintf(stderr, "WARNING: No keycode found for keysym "
                     "%s (0x%x). Ignoring this "
                     "mapping.\n", token, (unsigned int)ks);
             return 1;
@@ -158,7 +158,7 @@ Hotkey* parse_string(Display *d, const char* input) {
     char* token = strtok(inputCopy, "-");
     while (token != NULL) {
         if (handle_token(d, token, h) > 0) {
-            printf("Could not parse string %s", token);
+            fprintf(stderr, "Could not parse string %s", token);
             free(h);
             return NULL;
         }
@@ -171,25 +171,25 @@ Hotkey* parse_string(Display *d, const char* input) {
 void add_key(Display *d, khash_t(Config) *config, const char * from, const char *class, const char *to) {
     Hotkey *hfrom = parse_string(d, from);
     if (hfrom == NULL) {
-        printf("Could not parse from hotkey: %s\n", from);
+        fprintf(stderr, "Could not parse from hotkey: %s\n", from);
         return;
     }
     Hotkey *hto = parse_string(d, to);
     if (hto == NULL) {
-        printf("Could not parse to hotkey: %s\n", to);
+        fprintf(stderr, "Could not parse to hotkey: %s\n", to);
         free(hfrom);
         return;
     }
 
     unsigned short from_short = hotkey_to_short(*hfrom);
     free(hfrom);
-    printf("Adding config key %s - %s for app %s\n", from, to, class);
+    fprintf(stderr, "Adding config key %s - %s for app %s\n", from, to, class);
     khint_t k = kh_get(Config, config, from_short);
     if (k == kh_end(config)) {
         int ret;
         k = kh_put(Config, config, from_short, &ret);
         if (!ret) {
-            printf("Could not insert hotkey %s\n", from);
+            fprintf(stderr, "Could not insert hotkey %s\n", from);
             return;
         }
         kh_value(config, k) = kh_init(Mappings);
@@ -214,7 +214,7 @@ void load_configuration_file(App* app) {
         sprintf(path, "%s/%s", homedir, ".config/xremap" );
         FILE *fd = fopen(path, "r");
         if (fd == NULL) {
-            printf("Error opening configuration file %s\n", path);
+            fprintf(stderr, "Error opening configuration file %s\n", path);
         }
         char line[255];
         while (fgets(line, sizeof(line), fd) != NULL) {
@@ -256,9 +256,9 @@ Window *get_wm_window_list(Display *d, unsigned long *len) {
     unsigned long remain;
     unsigned char *list = 0;
 
-    printf("Getting wm window list using _NET_CLIENT_LIST\n");
+    fprintf(stderr, "Getting wm window list using _NET_CLIENT_LIST\n");
     if (XGetWindowProperty(d, DefaultRootWindow(d), prop, 0, (~0L), False, XA_WINDOW, &type, &format, len, &remain, &list) != Success) {
-        printf("Could not get list of windows from WM:");
+        fprintf(stderr, "Could not get list of windows from WM\n");
         return 0;
     }
 
@@ -284,14 +284,14 @@ Window get_active_window(Display *d) {
     if (XGetWindowProperty(d, root, netactivewindow, 0, ~0, False,
         AnyPropertyType, &real, &format, &n, &extra,
         &data) != Success && data != 0) {
-        printf("Could not get netactivewindow property !\n");
+        fprintf(stderr, "Could not get netactivewindow property !\n");
     }
 
     window = *(unsigned long *) data;
     XFree (data);
 
     if (window == 0) {
-        printf("No active window !\n");
+        fprintf(stderr, "No active window !\n");
     }
     return window;
 }
@@ -370,7 +370,7 @@ void grab_all_keys_for_window(void *tmp, Window w) {
     Display *d = app->ctrl_conn;
     XClassHint* class_hint = get_window_class_hint(d, w);
     char *class =  class_hint->res_class;
-    printf("Grab all keys for window %ld, %s, %s\n", w, class_hint->res_class, class_hint->res_name);
+    fprintf(stderr, "Grab all keys for window %ld, %s, %s\n", w, class_hint->res_class, class_hint->res_name);
     for (khint_t k = kh_begin(app->config); k != kh_end(app->config); ++k) {
         if (kh_exist(app->config, k)) {
             Hotkey *from = short_to_hotkey(kh_key(app->config, k));
@@ -383,13 +383,13 @@ void grab_all_keys_for_window(void *tmp, Window w) {
             khint_t kapp = kh_get(Mappings, mapping, class);
             if (kapp != kh_end(mapping)) {
                 // SPECIFIC HOTKEY
-                printf("Got specific hotkey for window %s \n", class);
+                fprintf(stderr, "Got specific hotkey for window %s \n", class);
                 XGrabKey(d, keycode, modifiers, w, False, GrabModeAsync, GrabModeAsync);
             } else {
                 khint_t kall = kh_get(Mappings, mapping, "*");
                 if (kall != kh_end(mapping)) {
                     // GLOBAL HOTKEY
-                    printf("Got ALL hotkey for window %s \n", class);
+                    fprintf(stderr, "Got ALL hotkey for window %s \n", class);
                     XGrabKey(d, keycode, modifiers, w, False, GrabModeAsync, GrabModeAsync);
                 }
             }
@@ -400,7 +400,7 @@ void grab_all_keys_for_window(void *tmp, Window w) {
 }
 
 void grab_all_keys(App *app) {
-    printf("Grabbing all keys for all apps\n");
+    fprintf(stderr, "Grabbing all keys for all apps\n");
     Display *d = app->ctrl_conn;
     unsigned long nitems;
     Window* windows = get_wm_window_list(d, &nitems);
@@ -411,14 +411,14 @@ void grab_all_keys(App *app) {
 }
 
 void restore_current_mods(Display *d, Hotkey h) {
-    printf("Restoring current mods to %d, %d, %d, %d\n", h.shift, h.control, h.alt, h.super);
+    fprintf(stderr, "Restoring current mods to %d, %d, %d, %d\n", h.shift, h.control, h.alt, h.super);
     if (h.shift) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Shift_L), True, 0);
     if (h.control) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Control_L), True, 0);
     if (h.alt) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Alt_L), True, 0);
     if (h.super) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Super_L), True, 0);
 }
 void release_current(Display *d, Hotkey h) {
-    printf("RELEASING current mods to %d, %d, %d, %d\n", h.shift, h.control, h.alt, h.super);
+    fprintf(stderr, "RELEASING current mods to %d, %d, %d, %d\n", h.shift, h.control, h.alt, h.super);
     if (h.shift) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Shift_L), False, 0);
     if (h.control) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Control_L), False, 0);
     if (h.alt) XTestFakeKeyEvent(d, XKeysymToKeycode(d, XK_Alt_L), False, 0);
@@ -455,7 +455,7 @@ void execute(App* app) {
         khash_t(Mappings)* mapping = kh_value(app->config, hotkey_found);
         khint_t any_found = kh_get(Mappings, mapping, "*");
         if (any_found != kh_end(mapping)) {
-            printf("Found remapping for ANY\n");
+            fprintf(stderr, "Found remapping for ANY\n");
             app->handling = 1;
             Hotkey *to = kh_value(mapping, any_found);
             XTestGrabControl(app->ctrl_conn, True);
@@ -470,16 +470,16 @@ void execute(App* app) {
         } else {
             Window w = get_active_window(app->ctrl_conn);
             if (w == None) {
-                printf("Could not get focused window !\n");
+                fprintf(stderr, "Could not get focused window !\n");
             } else {
                 XClassHint* class_hint = get_window_class_hint(app->ctrl_conn, w);
                 char* class = class_hint->res_class;
                 if (class == NULL) {
-                    printf("Could not get focused window class !\n");
+                    fprintf(stderr, "Could not get focused window class !\n");
                 } else {
                     khint_t app_found = kh_get(Mappings, mapping, class);
                     if (app_found != kh_end(mapping)) {
-                        printf("Found remapping for app %s\n", class);
+                        fprintf(stderr, "Found remapping for app %s\n", class);
                         app->handling = 1;
                         Hotkey current_copy = *app->current;
                         Hotkey *to = kh_value(mapping, app_found);
@@ -527,7 +527,7 @@ void intercept(XPointer user_data, XRecordInterceptData *data) {
 
     if (event_type == KeyPress) {
         KeyCode key_code  = datum->event.u.u.detail;
-        if (app->debug) printf("Intercepted key press, key code %d | %d, %ul, %d || %d\n", key_code, data->id_base, data->client_seq, data->category, data->client_swapped, app->handling);
+        if (app->debug) fprintf(stderr, "Intercepted key press, key code %d | %d, %ul, %d || %d\n", key_code, data->id_base, data->client_seq, data->category, data->client_swapped, app->handling);
         KeySym now = XkbKeycodeToKeysym(app->ctrl_conn, key_code, 0, 0);
         if (now == XK_Shift_L || now == XK_Shift_R) {
             app->current->shift = true;
@@ -545,7 +545,7 @@ void intercept(XPointer user_data, XRecordInterceptData *data) {
     } else if (event_type == KeyRelease) {
         // reset modifiers
         KeyCode key_code  = datum->event.u.u.detail;
-        if (app->debug) printf("Intercepted key release, key code %d | %d, %ul, %d || %d\n", key_code, data->id_base, data->client_seq, data->category, data->client_swapped, app->handling);
+        if (app->debug) fprintf(stderr, "Intercepted key release, key code %d | %d, %ul, %d || %d\n", key_code, data->id_base, data->client_seq, data->category, data->client_swapped, app->handling);
         KeySym now = XkbKeycodeToKeysym(app->ctrl_conn, key_code, 0, 0);
         if (now == XK_Shift_L || now == XK_Shift_R) {
             app->current->shift = false;
@@ -599,39 +599,39 @@ int main (int argc, char **argv) {
 				app->debug = True;
 				break;
 			default:
-                print_usage (argv[0]);
+                print_usage(argv[0]);
                 return EXIT_SUCCESS;
 		}
 	}
 
 	if (optind < argc) {
-		printf("Not a command line option: '%s'\n", argv[optind]);
+		fprintf(stderr, "Not a command line option: '%s'\n", argv[optind]);
 		print_usage (argv[0]);
 		return EXIT_SUCCESS;
 	}
 
 	if (!XInitThreads()) {
-		printf("Failed to initialize threads.\n");
+		fprintf(stderr, "Failed to initialize threads.\n");
 		exit (EXIT_FAILURE);
 	}
 
-	app->data_conn = XOpenDisplay (NULL);
-	app->ctrl_conn = XOpenDisplay (NULL);
+	app->data_conn = XOpenDisplay(NULL);
+	app->ctrl_conn = XOpenDisplay(NULL);
 
 	if (!app->data_conn || !app->ctrl_conn) {
-		printf("Unable to connect to X11 display. Is $DISPLAY set?\n");
+		fprintf(stderr, "Unable to connect to X11 display. Is $DISPLAY set?\n");
 		exit (EXIT_FAILURE);
 	}
 	if (!XQueryExtension (app->ctrl_conn, "XTEST", &dummy, &dummy, &dummy)) {
-		printf("Xtst extension missing\n");
+		fprintf(stderr, "Xtst extension missing\n");
 		exit (EXIT_FAILURE);
 	}
 	if (!XRecordQueryVersion (app->ctrl_conn, &dummy, &dummy)) {
-		printf("Failed to obtain xrecord version\n");
+		fprintf(stderr, "Failed to obtain xrecord version\n");
 		exit (EXIT_FAILURE);
 	}
 	if (!XkbQueryExtension (app->ctrl_conn, &dummy, &dummy, &dummy, &dummy, &dummy)) {
-		printf("Failed to obtain xkb version\n");
+		fprintf(stderr, "Failed to obtain xkb version\n");
 		exit (EXIT_FAILURE);
 	}
 
@@ -648,7 +648,7 @@ int main (int argc, char **argv) {
 	app->record_ctx = XRecordCreateContext(app->ctrl_conn, 0, &client_spec, 1, &rec_range, 1);
 
 	if (app->record_ctx == 0) {
-		printf("Failed to create xrecord context\n");
+		fprintf(stderr, "Failed to create xrecord context\n");
 		exit (EXIT_FAILURE);
 	}
 
@@ -659,17 +659,17 @@ int main (int argc, char **argv) {
 	XSync(app->ctrl_conn, True);
 
 	if (!XRecordEnableContext(app->data_conn, app->record_ctx, intercept, (XPointer)app)) {
-		printf("Failed to enable xrecord context\n");
+		fprintf(stderr, "Failed to enable xrecord context\n");
 		exit (EXIT_FAILURE);
 	}
 
 	pthread_join(app->sigwait_thread, NULL);
 
 	if (!XRecordFreeContext (app->ctrl_conn, app->record_ctx)) {
-		printf("Failed to free xrecord context\n");
+		fprintf(stderr, "Failed to free xrecord context\n");
 	}
 
-	if (app->debug) printf("main exiting\n");
+	if (app->debug) fprintf(stderr, "main exiting\n");
 	XFree(rec_range);
 
 	XCloseDisplay(app->ctrl_conn);
@@ -706,17 +706,17 @@ void *sig_handler(void *user_data) {
 	int sig;
 
 	if (app->debug)
-	    printf("sig_handler running...\n");
+	    fprintf(stderr, "sig_handler running...\n");
 
 	sigwait(&app->sigset, &sig);
 
 	if (app->debug)
-	    printf("Caught signal %d!\n", sig);
+	    fprintf(stderr, "Caught signal %d!\n", sig);
 
 	XLockDisplay(app->ctrl_conn);
 
 	if (!XRecordDisableContext (app->ctrl_conn, app->record_ctx)) {
-		printf("Failed to disable xrecord context\n");
+		fprintf(stderr, "Failed to disable xrecord context\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -724,13 +724,13 @@ void *sig_handler(void *user_data) {
 	XUnlockDisplay(app->ctrl_conn);
 
 	if (app->debug)
-	    printf("sig_handler exiting...\n");
+	    fprintf(stderr, "sig_handler exiting...\n");
 
 	return NULL;
 }
 
 
 void print_usage (const char *program_name) {
-	printf("Usage: %s [-d] [-e <mapping>]\n", program_name);
-	printf("Runs as a daemon unless -d flag is set\n");
+	fprintf(stderr, "Usage: %s [-d] [-e <mapping>]\n", program_name);
+	fprintf(stderr, "Runs as a daemon unless -d flag is set\n");
 }
